@@ -8,17 +8,7 @@ from dashing import *
 import serial
 import os
 from datetime import datetime
-import Jetson.GPIO as GPIO
 
-user_button_pressed = False
-def cb(channel):
-    global user_button_pressed
-    user_button_pressed = True
-
-pin = 'SOC_GPIO54'
-GPIO.setmode(GPIO.TEGRA_SOC)
-GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-GPIO.add_event_detect(pin, GPIO.RISING, callback = cb, bouncetime = 200)
 
 ## TODO setup zed camera
 init = sl.InitParameters(camera_resolution=sl.RESOLUTION.HD720,
@@ -32,8 +22,7 @@ if status != sl.ERROR_CODE.SUCCESS:
 
 tracking_params = sl.PositionalTrackingParameters(_enable_pose_smoothing=False, 
                                                   _set_floor_as_origin = False,
-                                                  _enable_imu_fusion = True)
-tracking_params.area_file_path = "smith.area"
+                                                  _enable_imu_fusion = False)
 zed.enable_positional_tracking(tracking_params)
 
 runtime = sl.RuntimeParameters()
@@ -60,7 +49,7 @@ ui = HSplit(
     )
 
 
-run_dashing_display = True
+run_dashing_display = False
 def update_display():
     if run_dashing_display:
         ui.display()
@@ -84,7 +73,7 @@ update_display()
 curDT = datetime.now()
 file_str = curDT.strftime("%Y-%m-%d-%H:%M:%S")
 with open("/home/dennis/t265_data_collector/zed_data/{}.txt".format(file_str), 'w') as f:
-    f.write("timestamp,posX,posY,posZ,quatW,quatX,quatY,quatZ,tracking_confidence,mapping_confidence,zed_aX,zed_aY,zed_aZ,zed_gX,zed_gY,zed_gZ,button\n")
+    f.write("timestamp,posX,posY,posZ,quatW,quatX,quatY,quatZ,tracking_confidence,mapping_confidence,zed_aX,zed_aY,zed_aZ,zed_gX,zed_gY,zed_gZ\n")
     try:
         while True:
 
@@ -94,7 +83,6 @@ with open("/home/dennis/t265_data_collector/zed_data/{}.txt".format(file_str), '
                 zed.get_sensors_data(sensors_data, sl.TIME_REFERENCE.CURRENT)
                 tracking_confidence = 0
                 mapping_confidence = 0
-                button = 0
                 if tracking_state == sl.POSITIONAL_TRACKING_STATE.OK:
                     rotation = camera_pose.get_orientation().get()
                     translation = camera_pose.get_translation(py_translation).get()
@@ -102,9 +90,6 @@ with open("/home/dennis/t265_data_collector/zed_data/{}.txt".format(file_str), '
                     gyro = sensors_data.get_imu_data().get_angular_velocity()
                     tracking_confidence = camera_pose.pose_confidence
                     mapping_confidence = 1
-                    if user_button_pressed:
-                        button = 1
-                        user_button_pressed = False
 #                    pose_data = camera_pose.pose_data(sl.Transform())
 
                     f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(camera_pose.timestamp.data_ns,
@@ -123,7 +108,6 @@ with open("/home/dennis/t265_data_collector/zed_data/{}.txt".format(file_str), '
                                                                                 gyro[0],
                                                                                 gyro[1],
                                                                                 gyro[2],
-                                                                                button,
                                                                                 ))
 
                 update_dx += 1
@@ -134,6 +118,8 @@ with open("/home/dennis/t265_data_collector/zed_data/{}.txt".format(file_str), '
         #            ui.items[0].items[1].append(str(ser.readline()))
                     update_display()
                     update_dx = 0
+                elif update_dx % 60 == 0:
+                    print("confidence: {}, time: {}".format(tracking_confidence, str((time.time() - start_time)/60)))
 
     finally:
         ui.items[0].items[0].append("shutting down")
@@ -147,9 +133,8 @@ with open("/home/dennis/t265_data_collector/zed_data/{}.txt".format(file_str), '
 #            ser.write(b'y')
 
         ## TODO shutdown zed
+        zed.disable_positional_tracking("smith.area")
         zed.close()
-
-        GPIO.cleanup()
 
         os.system("clear")
         print("done")

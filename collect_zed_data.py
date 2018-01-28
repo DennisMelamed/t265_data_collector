@@ -14,11 +14,15 @@ user_button_pressed = False
 def cb(channel):
     global user_button_pressed
     user_button_pressed = True
+    GPIO.output(high_pin, GPIO.HIGH)
 
-pin = 'SOC_GPIO54'
-GPIO.setmode(GPIO.TEGRA_SOC)
-GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+pin = 'MCLK05' #'UART1_RTS' #'SOC_GPIO54'
+high_pin = 'UART1_RTS'
+GPIO.setmode(GPIO.CVM)#TEGRA_SOC)
+GPIO.setup(pin, GPIO.IN)
+GPIO.setup(high_pin, GPIO.OUT, initial = GPIO.LOW)
 GPIO.add_event_detect(pin, GPIO.RISING, callback = cb, bouncetime = 200)
+print("GPIO setup finished")
 
 ## TODO setup zed camera
 init = sl.InitParameters(camera_resolution=sl.RESOLUTION.HD720,
@@ -32,8 +36,8 @@ if status != sl.ERROR_CODE.SUCCESS:
 
 tracking_params = sl.PositionalTrackingParameters(_enable_pose_smoothing=False, 
                                                   _set_floor_as_origin = False,
-                                                  _enable_imu_fusion = True)
-tracking_params.area_file_path = "smith.area"
+                                                  _enable_imu_fusion = False)
+tracking_params.area_file_path = "nsh_chair.area" #"smith.area"
 zed.enable_positional_tracking(tracking_params)
 
 runtime = sl.RuntimeParameters()
@@ -95,6 +99,11 @@ with open("/home/dennis/t265_data_collector/zed_data/{}.txt".format(file_str), '
                 tracking_confidence = 0
                 mapping_confidence = 0
                 button = 0
+
+                if user_button_pressed:
+                    button = 1
+                    user_button_pressed = False
+                    GPIO.output(high_pin, GPIO.LOW)
                 if tracking_state == sl.POSITIONAL_TRACKING_STATE.OK:
                     rotation = camera_pose.get_orientation().get()
                     translation = camera_pose.get_translation(py_translation).get()
@@ -102,12 +111,9 @@ with open("/home/dennis/t265_data_collector/zed_data/{}.txt".format(file_str), '
                     gyro = sensors_data.get_imu_data().get_angular_velocity()
                     tracking_confidence = camera_pose.pose_confidence
                     mapping_confidence = 1
-                    if user_button_pressed:
-                        button = 1
-                        user_button_pressed = False
 #                    pose_data = camera_pose.pose_data(sl.Transform())
 
-                    f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(camera_pose.timestamp.data_ns,
+                    f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(camera_pose.timestamp.data_ns,
                                                                                 translation[0],
                                                                                 translation[1],
                                                                                 translation[2],

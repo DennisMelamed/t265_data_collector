@@ -133,7 +133,7 @@ with open("/home/dennis/t265_data_collector/zed_data/{}.txt".format(file_str), '
 #            ser.write(b'y')
 
         ## TODO shutdown zed
-        zed.disable_positional_tracking("smith.area")
+        zed.disable_positional_tracking("wean_chair.area")
         zed.close()
 
         os.system("clear")

@@ -12,6 +12,7 @@ import pyrealsense2 as rs
 import time
 from dashing import *
 import serial
+import os
 
 # Declare RealSense pipeline, encapsulating the actual device and sensors
 pipe = rs.pipeline()
@@ -19,6 +20,8 @@ pipe = rs.pipeline()
 # Build config object and request pose data
 cfg = rs.config()
 cfg.enable_stream(rs.stream.pose)
+cfg.enable_stream(rs.stream.accel)
+cfg.enable_stream(rs.stream.gyro)
 
 # Start streaming with requested config
 pipe.start(cfg)
@@ -33,7 +36,14 @@ ui = HSplit(
             HGauge(val=0, title="mapper accuracy", border_color=5),
         )
     )
-ui.display()
+
+
+run_dashing_display = True
+def update_display():
+    if run_dashing_display:
+        ui.display()
+
+update_display()
 
 
 update_dx = -1
@@ -42,14 +52,14 @@ start_time = time.time()
 ## open a serial terminal here, should lead to a logging start on the OLA if its in deep sleep mode
 with serial.Serial('/dev/ttyUSB0', 115200, timeout=1) as ser:
     ui.items[0].items[0].append("system started")
-    ui.display()
+    update_display()
     ## pull out the init info from the OLA
-    for idx in range(20):
+    for idx in range(16):
         ui.items[0].items[1].append(str(ser.readline()))
-    ui.display()
+    update_display()
 
     with open(f"t265_data/{time.time()}.txt", 'w') as f:
-        f.write("timestamp,posX,posY,posZ,quatW,quatX,quatY,quatZ,tracking_confidence,mapping_confidence\n")
+        f.write("timestamp,posX,posY,posZ,quatW,quatX,quatY,quatZ,tracking_confidence,mapping_confidence,zed_aX,zed_aY,zed_aZ,zed_gX,zed_gY,zed_gZ\n")
         try:
             while True:
                 # Wait for the next set of frames from the camera
@@ -59,29 +69,41 @@ with serial.Serial('/dev/ttyUSB0', 115200, timeout=1) as ser:
                 pose = frames.get_pose_frame()
                 if pose:
                     data = pose.get_pose_data()
-                    f.write("{},{},{},{},{},{},{},{},{},{}\n".format(pose.timestamp,
-                                                                    data.translation.x,
-                                                                    data.translation.y,
-                                                                    data.translation.z,
-                                                                    data.rotation.w,
-                                                                    data.rotation.x,
-                                                                    data.rotation.y,
-                                                                    data.rotation.z,
-                                                                    data.tracker_confidence,
-                                                                    data.mapper_confidence))
+
+
+                    gyro  = frames[0].as_motion_frame().get_motion_data()
+                    accel = frames[1].as_motion_frame().get_motion_data()
+
+                    f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(pose.timestamp,
+                                                                                    data.translation.x,
+                                                                                    data.translation.y,
+                                                                                    data.translation.z,
+                                                                                    data.rotation.w,
+                                                                                    data.rotation.x,
+                                                                                    data.rotation.y,
+                                                                                    data.rotation.z,
+                                                                                    data.tracker_confidence,
+                                                                                    data.mapper_confidence,
+                                                                                    accel.x,
+                                                                                    accel.y,
+                                                                                    accel.z,
+                                                                                    gyro.x,
+                                                                                    gyro.y,
+                                                                                    gyro.z,
+                                                                                    ))
 
                     update_dx += 1
-                    if update_dx % 2000 == 0:
+                    if update_dx % 2000 == 0 and run_dashing_display:
                         ui.items[1].items[0].value = (data.tracker_confidence+1)*25
                         ui.items[1].items[1].value = (data.mapper_confidence+1)*25
                         ui.items[0].items[0].append(str((time.time() - start_time)/60))
                         ui.items[0].items[1].append(str(ser.readline()))
-                        ui.display()
+                        update_display()
                         update_dx = 0
 
         finally:
             ui.items[0].items[0].append("shutting down")
-            ui.display()
+            update_display()
 
             ## send close commands to OLA ( newline, q, then y)
             ser.write(b'\n')
@@ -92,3 +114,5 @@ with serial.Serial('/dev/ttyUSB0', 115200, timeout=1) as ser:
 
             pipe.stop()
 
+            os.system("clear")
+            print("done")
